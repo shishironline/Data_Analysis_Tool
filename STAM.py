@@ -9,7 +9,6 @@ import seaborn as sns
 
 # Read file
 def read_file(file_path, file_type):
-    """Reads data from an Excel or CSV file."""
     try:
         if file_type == 'csv':
             df = pd.read_csv(file_path)
@@ -25,45 +24,98 @@ def read_file(file_path, file_type):
 
 # Clean data
 def clean_data(df):
-    """Cleans the DataFrame by handling missing values and duplicates."""
     df_cleaned = df.drop_duplicates()
     df_cleaned = df_cleaned.fillna(df_cleaned.mean(numeric_only=True))
     df_cleaned = df_cleaned.dropna()
     return df_cleaned
 
-# Central Tendency
-def calculate_mean(df, column):
-    return df[column].mean()
+# Describe data
+def describe_data(df):
+    st.write("Data Information:")
+    buffer = pd.io.common.StringIO()
+    df.info(buf=buffer)
+    s = buffer.getvalue()
+    st.text(s)
+    st.write("Statistical Summary:")
+    st.write(df.describe())
 
-def calculate_median(df, column):
-    return df[column].median()
+# Rename columns
+def rename_columns(df, new_columns):
+    try:
+        df = df.rename(columns=new_columns)
+        return df
+    except Exception as e:
+        st.error(f"Error renaming columns: {e}")
+        return df 
 
-def calculate_mode(df, column):
-    return df[column].mode()[0]
+# Change data types
+def change_data_types(df, column_types): 
+    try:
+        df = df.astype(column_types)
+        return df
+    except Exception as e:
+        st.error(f"Error changing data types: {e}")
+        return df
 
-# Dispersion
-def calculate_variance(df, column):
-    return df[column].var()
+# Handle missing values
+def handle_missing_values(df, strategy='mean'):
+    if strategy == 'mean':
+        return df.fillna(df.mean())
+    elif strategy == 'median':
+        return df.fillna(df.median())
+    elif strategy == 'mode':
+        return df.fillna(df.mode().iloc[0])
+    elif strategy == 'drop':
+        return df.dropna()
+    else:
+        st.error("Invalid strategy. Choose from 'mean', 'median', 'mode', or 'drop'.")
+        return df
 
-def calculate_std_dev(df, column):
-    return df[column].std()
+# Handle outliers
+def handle_outliers(df, column, method='iqr'):
+    if method == 'iqr':
+        Q1 = df[column].quantile(0.25)
+        Q3 = df[column].quantile(0.75)
+        IQR = Q3 - Q1
+        df = df[(df[column] >= (Q1 - 1.5 * IQR)) & (df[column] <= (Q3 + 1.5 * IQR))]
+    elif method == 'zscore':
+        df = df[(np.abs(stats.zscore(df[column])) < 3)]
+    else:
+        st.error("Invalid method. Choose 'iqr' or 'zscore'.")
+    return df
 
-def calculate_range(df, column):
-    return df[column].max() - df[column].min()
+# Subset DataFrame
+def sub_setting(df, condition):
+    return df.query(condition)
 
-# Position
-def calculate_percentile(df, column, q):
-    return np.percentile(df[column], q)
+# Sample data
+def sample_data(df, n, method='random'):
+    if method == 'random':
+        return df.sample(n=n, random_state=42)
+    elif method == 'stratified':
+        return df.groupby('strata').apply(lambda x: x.sample(n=n, random_state=42)).reset_index(drop=True)
+    else:
+        st.error("Invalid method. Choose 'random' or 'stratified'.")
+        return df
 
-def calculate_quartiles(df, column):
-    return np.percentile(df[column], [25, 50, 75])
+# Create new column
+def create_new_column(df, new_column_name, calculation):
+    df[new_column_name] = calculation
+    return df
 
-# Shape
-def calculate_skewness(df, column):
-    return stats.skew(df[column])
+# Binning
+def bin_data(df, column, bins, labels):
+    try:
+        df[f'{column}_binned'] = pd.cut(df[column], bins=bins, labels=labels)
+        return df
+    except Exception as e:
+        st.error(f"Error binning data: {e}")
+        return df
 
-def calculate_kurtosis(df, column):
-    return stats.kurtosis(df[column])
+# Replace values
+def replace_values(df, column_name, to_replace, value):
+    df[column_name] = df[column_name].replace(to_replace, value)
+    return df
 
 # Visualization Functions
 def plot_histogram(df, column):
@@ -76,24 +128,9 @@ def plot_boxplot(df, column):
     sns.boxplot(df[column])
     st.pyplot(plt)
 
-def plot_bar_chart(df, column):
-    plt.figure()
-    df[column].value_counts().plot(kind='bar')
-    st.pyplot(plt)
-
-def plot_pie_chart(df, column):
-    plt.figure()
-    df[column].value_counts().plot(kind='pie')
-    st.pyplot(plt)
-
 def plot_scatter_plot(df, x_column, y_column):
     plt.figure()
     sns.scatterplot(x=df[x_column], y=df[y_column])
-    st.pyplot(plt)
-
-def plot_line_chart(df, x_column, y_column):
-    plt.figure()
-    plt.plot(df[x_column], df[y_column])
     st.pyplot(plt)
 
 # Streamlit App
@@ -110,45 +147,106 @@ if uploaded_file is not None:
         st.write("Data Preview:")
         st.dataframe(df.head())
 
+        # Step 3: Clean Data
         if st.button("Clean Data"):
             df = clean_data(df)
             st.write("Cleaned Data:")
             st.dataframe(df.head())
 
-        column = st.selectbox("Select a column for analysis", df.columns)
+        # Step 4: Describe Data
+        if st.button("Describe Data"):
+            describe_data(df)
 
-        if st.button("Show Central Tendency"):
-            st.write(f"Mean: {calculate_mean(df, column)}")
-            st.write(f"Median: {calculate_median(df, column)}")
-            st.write(f"Mode: {calculate_mode(df, column)}")
+        # Step 5: Rename Columns
+        new_column_names = st.text_input("Enter new column names as a dictionary (e.g., {'old_name': 'new_name'})")
+        if st.button("Rename Columns"):
+            try:
+                new_column_dict = eval(new_column_names)  # Converting string input to dictionary
+                df = rename_columns(df, new_column_dict)
+                st.write("Columns renamed successfully.")
+            except Exception as e:
+                st.error(f"Error renaming columns: {e}")
 
-        if st.button("Show Dispersion"):
-            st.write(f"Variance: {calculate_variance(df, column)}")
-            st.write(f"Standard Deviation: {calculate_std_dev(df, column)}")
-            st.write(f"Range: {calculate_range(df, column)}")
+        # Step 6: Change Data Types
+        column_types_input = st.text_input("Enter column types as a dictionary (e.g., {'column_name': 'type'})")
+        if st.button("Change Data Types"):
+            try:
+                column_types_dict = eval(column_types_input)
+                df = change_data_types(df, column_types_dict)
+                st.write("Data types changed successfully.")
+            except Exception as e:
+                st.error(f"Error changing data types: {e}")
 
-        if st.button("Show Position"):
-            st.write(f"Quartiles: {calculate_quartiles(df, column)}")
-            st.write(f"90th Percentile: {calculate_percentile(df, column, 90)}")
+        # Step 7: Handle Missing Values
+        missing_value_strategy = st.selectbox("Select strategy for handling missing values", ['mean', 'median', 'mode', 'drop'])
+        if st.button("Handle Missing Values"):
+            df = handle_missing_values(df, strategy=missing_value_strategy)
+            st.write("Missing values handled.")
 
-        if st.button("Show Shape"):
-            st.write(f"Skewness: {calculate_skewness(df, column)}")
-            st.write(f"Kurtosis: {calculate_kurtosis(df, column)}")
+        # Step 8: Handle Outliers
+        column_for_outliers = st.selectbox("Select a column to handle outliers", df.columns)
+        outlier_method = st.selectbox("Select method for handling outliers", ['iqr', 'zscore'])
+        if st.button("Handle Outliers"):
+            df = handle_outliers(df, column_for_outliers, method=outlier_method)
+            st.write("Outliers handled.")
 
-        if st.button("Show Visualization"):
-            plot_choice = st.selectbox("Select plot type", ["Histogram", "Box Plot", "Bar Chart", "Pie Chart", "Scatter Plot", "Line Chart"])
-            
-            if plot_choice == "Histogram":
-                plot_histogram(df, column)
-            elif plot_choice == "Box Plot":
-                plot_boxplot(df, column)
-            elif plot_choice == "Bar Chart":
-                plot_bar_chart(df, column)
-            elif plot_choice == "Pie Chart":
-                plot_pie_chart(df, column)
-            elif plot_choice == "Scatter Plot":
-                column_x = st.selectbox("Select X column", df.columns)
-                plot_scatter_plot(df, column_x, column)
-            elif plot_choice == "Line Chart":
-                column_x = st.selectbox("Select X column", df.columns)
-                plot_line_chart(df, column_x, column)
+        # Step 9: Subset Data
+        condition = st.text_input("Enter condition for subsetting (e.g., 'column_name > value')")
+        if st.button("Subset Data"):
+            df_subset = sub_setting(df, condition)
+            st.write("Subsetted Data:")
+            st.dataframe(df_subset)
+
+        # Step 10: Sample Data
+        sample_size = st.number_input("Enter the sample size", min_value=1)
+        sample_method = st.selectbox("Select sampling method", ['random', 'stratified'])
+        if st.button("Sample Data"):
+            df_sampled = sample_data(df, sample_size, method=sample_method)
+            st.write("Sampled Data:")
+            st.dataframe(df_sampled)
+
+        # Step 11: Create New Column
+        new_column_name = st.text_input("Enter new column name")
+        calculation = st.text_input("Enter calculation (e.g., df['column1'] + df['column2'])")
+        if st.button("Create New Column"):
+            df = create_new_column(df, new_column_name, eval(calculation))
+            st.write("New column created successfully.")
+
+        # Step 12: Transform Data
+        column_to_bin = st.selectbox("Select a column to bin", df.columns)
+        bins_input = st.text_input("Enter bin edges as a list (e.g., [0, 10, 20])")
+        labels_input = st.text_input("Enter labels for the bins as a list (e.g., ['Low', 'Medium', 'High'])")
+        if st.button("Bin Data"):
+            try:
+                bins = eval(bins_input)
+                labels = eval(labels_input)
+                df = bin_data(df, column_to_bin, bins, labels)
+                st.write("Data binned successfully.")
+            except Exception as e:
+                st.error(f"Error binning data: {e}")
+
+        # Step 13: Replace Values
+        column_to_replace = st.selectbox("Select a column to replace values", df.columns)
+        to_replace_value = st.text_input("Enter value to replace")
+        new_value = st.text_input("Enter new value")
+        if st.button("Replace Values"):
+            df = replace_values(df, column_to_replace, to_replace_value, new_value)
+            st.write("Values replaced successfully.")
+
+        # Step 14: Visualization
+        st.subheader("Visualizations")
+        plot_column = st.selectbox("Select column for histogram", df.columns)
+        if st.button("Plot Histogram"):
+            plot_histogram(df, plot_column)
+        boxplot_column = st.selectbox("Select column for boxplot", df.columns)
+        if st.button("Plot Boxplot"):
+            plot_boxplot(df, boxplot_column)
+        x_column = st.selectbox("Select X column for scatter plot", df.columns)
+        y_column = st.selectbox("Select Y column for scatter plot", df.columns)
+        if st.button("Plot Scatter Plot"):
+            plot_scatter_plot(df, x_column, y_column)
+
+        # Final Data Display
+        st.write("Final Data:")
+        st.dataframe(df)
+
